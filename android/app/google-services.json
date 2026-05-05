@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "230123407289",
+    "project_id": "chat-job-2",
+    "storage_bucket": "chat-job-2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:230123407289:android:231fa1cad9aa55961b5868",
+        "android_client_info": {
+          "package_name": "co.andelwood2.chat_job"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDveiwj014YnwT5R5vwLvcMDkE3mDfzdhE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
