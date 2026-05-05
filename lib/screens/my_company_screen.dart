@@ -19,6 +19,7 @@ List<String> dropDownItems = [
   'past 4 months',
   'past year',
 ];
+final _firestore = FirebaseFirestore.instance;
 
 class MyCompany extends StatefulWidget {
   static const id = 'sell_screen';
@@ -31,7 +32,6 @@ class MyCompany extends StatefulWidget {
 class _MyCompanyState extends State<MyCompany> {
   String? _companyName;
   final _auth = FirebaseAuth.instance;
-  final _firestore = FirebaseFirestore.instance;
 
   String? userUid;
   String? userEmail;
@@ -365,6 +365,38 @@ class _MyCompanyState extends State<MyCompany> {
               },
               child: Text('Ratings'),
             ),
+            SizedBox(height: 20),
+            Text('Watch List'),
+            Padding(padding: const EdgeInsets.all(10.0), child: Divider()),
+            StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: _firestore.collection('users').doc(userUid).snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  print('error: ${snapshot.error}');
+                  return Center(child: Text("Error: ${snapshot.error}"));
+                }
+
+                if (!snapshot.hasData || !snapshot.data!.exists) {
+                  return const Center(child: Text("No Listings yet"));
+                }
+
+                final userData = snapshot.data!.data();
+                if (userData == null || userData['watchList'].isEmpty) {
+                  return const Center(
+                    child: Text("No Listings on your watchlist yet"),
+                  );
+                }
+
+                final watchListData = userData['watchList'];
+
+                for (var doc in watchListData) {}
+                return Center();
+              },
+            ),
             SizedBox(height: 50),
           ],
         ),
@@ -386,5 +418,16 @@ class DropdownContainer extends StatelessWidget {
         child: Text(containerText, style: TextStyle(fontSize: 15)),
       ),
     );
+  }
+}
+
+class WatchListTemplate extends StatelessWidget {
+  final String listingName;
+
+  const WatchListTemplate({super.key, required this.listingName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container();
   }
 }

@@ -499,7 +499,19 @@ class _AddTemplateScreenState extends State<AddTemplateScreen> {
               padding: EdgeInsets.all(20),
               child: Row(
                 children: [
-                  IconButton(onPressed: () {}, icon: Icon(Icons.save)),
+                  MaterialButton(
+                    onPressed: () async {
+                      await firestore.collection('users').doc(currentUserUid).update({
+                        'watchList': FieldValue.arrayUnion([widget.listingId]),
+                      });
+                    },
+                    child: Row(
+                      children: [
+                        Text('Save Listing'),
+                        Icon(Icons.save, size: 30),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
