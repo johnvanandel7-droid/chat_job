@@ -19,6 +19,7 @@ List<String> dropDownItems = [
   'past 4 months',
   'past year',
 ];
+
 final _firestore = FirebaseFirestore.instance;
 
 class MyCompany extends StatefulWidget {
@@ -47,115 +48,80 @@ class _MyCompanyState extends State<MyCompany> {
   @override
   void initState() {
     super.initState();
-
-    getCurrentUser();
+    _initUser();
   }
 
-  Future<void> getRating() async {
-    if (userUid == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Seller profile not found. Please re-register.'),
-          ),
-        );
-      }
+  // Merged getCurrentUser + getSellerInfo + getRating into one init flow.
+  // Avoids redundant Firestore reads and repeated setState calls.
+  Future<void> _initUser() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _companyName = 'Not allowed');
       return;
     }
 
+    final uid = user.uid;
+    final email = user.email?.trim().toLowerCase() ?? '';
+
+    if (mounted) {
+      setState(() {
+        userUid = uid;
+        userEmail = email;
+        _companyName = email.split('@')[0].trim();
+      });
+    }
+
+    // Run both Firestore reads concurrently instead of sequentially.
+    await Future.wait([_loadSellerInfo(uid), _loadAverageRating(uid)]);
+  }
+
+  Future<void> _loadSellerInfo(String uid) async {
+    try {
+      final doc = await _firestore.collection('users').doc(uid).get();
+      if (!doc.exists || !mounted) return;
+
+      final data = doc.data()!;
+      setState(() {
+        clicksOnListings = (data['clicksOnListing'] as num?)?.toInt() ?? 0;
+        totalEarnings = (data['totalEarnings'] as num?)?.toDouble() ?? 0.0;
+        cash = (data['totalCash'] as num?)?.toDouble() ?? 0.0;
+        listingsSold = (data['listingsSold'] as num?)?.toDouble() ?? 0.0;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load seller info: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadAverageRating(String uid) async {
     try {
       final snapshot = await _firestore
           .collection('seller_ratings')
-          .where('sellerId', isEqualTo: userUid)
+          .where('sellerId', isEqualTo: uid)
           .get();
+
+      if (!mounted) return;
 
       if (snapshot.docs.isEmpty) {
-        setState(() {
-          averageRating = 0;
-        });
+        setState(() => averageRating = 0);
         return;
       }
 
-      double total = 0;
-
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        final rating = (data['rating'] as num?)?.toDouble() ?? 0;
-        total += rating;
-      }
-
-      double avg = total / snapshot.docs.length;
-
-      setState(() {
-        averageRating = avg;
+      final total = snapshot.docs.fold<double>(0, (sum, doc) {
+        return sum + ((doc.data()['rating'] as num?)?.toDouble() ?? 0);
       });
+
+      setState(() => averageRating = total / snapshot.docs.length);
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('failed to get ratings')));
-    }
-  }
-
-  Future<void> getSellerInfo() async {
-    if (userUid == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Seller profile not found. Please re-register.'),
-          ),
-        );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Failed to load ratings')));
       }
-      return;
     }
-
-    try {
-      final docSnapshot = await _firestore
-          .collection('users')
-          .doc(userUid)
-          .get();
-
-      if (!docSnapshot.exists) {
-        return;
-      }
-
-      final data = docSnapshot.data() as Map<String, dynamic>;
-
-      String userName = data['userEmail'] ?? 'unknown';
-      int clicks = data['clicksOnListing'] ?? 0;
-      double earnings = (data['totalEarnings'] as num?)?.toDouble() ?? 0.0;
-      double totalCash = (data['totalCash'] as num?)?.toDouble() ?? 0.0;
-      double soldListings = (data['listingsSold'] as num?)?.toDouble() ?? 0.0;
-
-      setState(() {
-        userEmail = userName;
-        clicksOnListings = clicks;
-        totalEarnings = earnings;
-        cash = totalCash;
-        listingsSold = soldListings;
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to show seller info $e')));
-    }
-  }
-
-  void getCurrentUser() async {
-    final user = _auth.currentUser;
-    if (user != null) {
-      setState(() {
-        _companyName = (user.email ?? '').split('@')[0].trim();
-        userUid = user.uid;
-        userEmail = user.email?.trim().toLowerCase();
-      });
-    } else {
-      setState(() {
-        _companyName = 'Not allowed';
-      });
-    }
-
-    await getRating();
-    await getSellerInfo();
   }
 
   @override
@@ -165,37 +131,13 @@ class _MyCompanyState extends State<MyCompany> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            Padding(
-              padding: EdgeInsets.all(10),
-              child: Material(
-                elevation: 5.0,
-                color: Colors.grey,
-                borderRadius: BorderRadius.circular(30.0),
-                child: MaterialButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, BuySellScreen.id);
-                  },
-                  minWidth: double.infinity,
-                  height: 42.0,
-                  child: Text('Buy'),
-                ),
-              ),
+            _buildButton(
+              'Buy',
+              () => Navigator.pushNamed(context, BuySellScreen.id),
             ),
-            Padding(
-              padding: EdgeInsets.all(10),
-              child: Material(
-                elevation: 5.0,
-                color: Colors.grey,
-                borderRadius: BorderRadius.circular(30.0),
-                child: MaterialButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, EditCompany.id);
-                  },
-                  minWidth: double.infinity,
-                  height: 42.0,
-                  child: Text('Edit Company'),
-                ),
-              ),
+            _buildButton(
+              'Edit Company',
+              () => Navigator.pushNamed(context, EditCompany.id),
             ),
             Text(
               'Company Name',
@@ -203,219 +145,228 @@ class _MyCompanyState extends State<MyCompany> {
             ),
             Text(
               _companyName ?? 'Not Logged In',
-              style: TextStyle(color: Colors.black, fontSize: 30),
+              style: const TextStyle(color: Colors.black, fontSize: 30),
             ),
-            Padding(
-              padding: EdgeInsets.all(10),
-              child: Material(
-                elevation: 5.0,
-                color: Colors.grey,
-                borderRadius: BorderRadius.circular(30.0),
-                child: MaterialButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, CreateListing.id);
-                  },
-                  minWidth: double.infinity,
-                  height: 42.0,
-                  child: Text('Create Listing'),
-                ),
-              ),
+            _buildButton(
+              'Create Listing',
+              () => Navigator.pushNamed(context, CreateListing.id),
             ),
-            Padding(
-              padding: const EdgeInsets.all(10.0),
-              child: Material(
-                elevation: 5.0,
-                color: Colors.grey,
-                borderRadius: BorderRadius.circular(30.0),
-                child: MaterialButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, MyAddsList.id);
-                  },
-                  minWidth: double.infinity,
-                  child: Text('My Listings'),
-                ),
-              ),
+            _buildButton(
+              'My Listings',
+              () => Navigator.pushNamed(context, MyAddsList.id),
             ),
-            Padding(
-              padding: const EdgeInsets.all(10.0),
-              child: Material(
-                elevation: 5.0,
-                color: Colors.grey,
-                borderRadius: BorderRadius.circular(30.0),
-                child: MaterialButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, MyPurchasesScreen.id);
-                  },
-                  minWidth: double.infinity,
-                  child: Text('My Purchases'),
-                ),
-              ),
+            _buildButton(
+              'My Purchases',
+              () => Navigator.pushNamed(context, MyPurchasesScreen.id),
             ),
-            Padding(
-              padding: const EdgeInsets.all(10.0),
-              child: Material(
-                elevation: 5.0,
-                color: Colors.grey,
-                borderRadius: BorderRadius.circular(30.0),
-                child: MaterialButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, SellHistory.id);
-                  },
-                  minWidth: double.infinity,
-                  child: Text('My Selling history'),
-                ),
-              ),
+            _buildButton(
+              'My Selling History',
+              () => Navigator.pushNamed(context, SellHistory.id),
             ),
-            SizedBox(height: 20),
-            Text(
+            const SizedBox(height: 20),
+            const Text(
               'My Selling Stats',
               style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
             ),
-            Padding(padding: const EdgeInsets.all(10.0), child: Divider()),
-            DropdownButton(
+            const Padding(padding: EdgeInsets.all(10.0), child: Divider()),
+            DropdownButton<String>(
               value: dropDownValue,
-              items: dropDownItems.map<DropdownMenuItem<String>>((
-                String value,
-              ) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-              onChanged: (newTimeFrame) {
-                setState(() {
-                  dropDownValue = newTimeFrame!;
-                });
+              items: dropDownItems
+                  .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                  .toList(),
+              onChanged: (newValue) {
+                if (newValue != null) setState(() => dropDownValue = newValue);
               },
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             Row(
               children: [
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Container(
-                    padding: EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(10),
                     decoration: kContainerDecoration,
-                    child: Text('Clicks on listings: $clicksOnListings'),
+                    child: Text(
+                      'Clicks on listings: ${clicksOnListings ?? '—'}',
+                    ),
                   ),
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Container(
-                    padding: EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(10),
                     decoration: kContainerDecoration,
-                    child: Text('total earnings: $totalEarnings'),
+                    child: Text('Total earnings: ${totalEarnings ?? '—'}'),
                   ),
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
               ],
             ),
-            SizedBox(height: 15),
+            const SizedBox(height: 15),
             Row(
               children: [
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Container(
-                    padding: EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(10),
                     decoration: kContainerDecoration,
                     child: Column(
                       children: [
-                        Text('Cash: $cash'),
-                        SizedBox(height: 10),
+                        Text('Cash: ${cash ?? '—'}'),
+                        const SizedBox(height: 10),
                         MaterialButton(
                           onPressed: () {},
                           color: Colors.grey,
-                          child: Text('Add money'),
+                          child: const Text('Add money'),
                         ),
                       ],
                     ),
                   ),
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Container(
+                    padding: const EdgeInsets.all(10),
                     decoration: kContainerDecoration,
                     child: Column(
                       children: [
-                        Text('Listings sold: $listingsSold'),
-                        SizedBox(height: 10),
+                        Text('Listings sold: ${listingsSold ?? '—'}'),
+                        const SizedBox(height: 10),
                         MaterialButton(
                           color: Colors.grey,
-                          onPressed: () {
-                            Navigator.pushNamed(context, SellHistory.id);
-                          },
-                          child: Text('View Selling'),
+                          onPressed: () =>
+                              Navigator.pushNamed(context, SellHistory.id),
+                          child: const Text('View Selling'),
                         ),
                       ],
                     ),
                   ),
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
               ],
             ),
-            Text('Ratings', style: TextStyle(fontSize: 30)),
-            Padding(padding: EdgeInsets.all(10), child: Divider()),
+            const Text('Ratings', style: TextStyle(fontSize: 30)),
+            const Padding(padding: EdgeInsets.all(10), child: Divider()),
             ReusableStarRating(rating: averageRating ?? 0, starSize: 30),
-            Text('Rating: $averageRating'),
-            SizedBox(height: 10),
+            Text('Rating: ${averageRating?.toStringAsFixed(1) ?? '—'}'),
+            const SizedBox(height: 10),
             MaterialButton(
               color: Colors.grey,
-              onPressed: () {
-                Navigator.pushNamed(context, ViewMyRatings.id);
-              },
-              child: Text('Ratings'),
+              onPressed: () => Navigator.pushNamed(context, ViewMyRatings.id),
+              child: const Text('Ratings'),
             ),
-            SizedBox(height: 20),
-            Text('Watch List'),
-            Padding(padding: const EdgeInsets.all(10.0), child: Divider()),
-            StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: _firestore.collection('users').doc(userUid).snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            const SizedBox(height: 20),
+            const Text('Watch List', style: TextStyle(fontSize: 20)),
+            const Padding(padding: EdgeInsets.all(10.0), child: Divider()),
+            // Watch List — resolved with FutureBuilder to fetch listing docs.
+            if (userUid != null)
+              StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                stream: _firestore.collection('users').doc(userUid).snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+                  if (!snapshot.hasData || !snapshot.data!.exists) {
+                    return const Center(child: Text('No listings yet'));
+                  }
 
-                if (snapshot.hasError) {
-                  print('error: ${snapshot.error}');
-                  return Center(child: Text("Error: ${snapshot.error}"));
-                }
+                  final userData = snapshot.data!.data();
+                  final rawList = userData?['watchList'];
 
-                if (!snapshot.hasData || !snapshot.data!.exists) {
-                  return const Center(child: Text("No Listings yet"));
-                }
+                  // Guard: watchList field missing or empty
+                  if (rawList == null || rawList is! List || rawList.isEmpty) {
+                    return const Center(
+                      child: Text('No listings on your watchlist yet'),
+                    );
+                  }
 
-                final userData = snapshot.data!.data();
-                if (userData == null || userData['watchList'].isEmpty) {
-                  return const Center(
-                    child: Text("No Listings on your watchlist yet"),
+                  final List<String> watchListIds = rawList
+                      .map((e) => e.toString())
+                      .toList();
+
+                  // FutureBuilder resolves the listing docs for the watch list IDs.
+                  return FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _fetchWatchListings(watchListIds),
+                    builder: (context, futureSnap) {
+                      if (futureSnap.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (futureSnap.hasError) {
+                        return Center(
+                          child: Text(
+                            'Error loading watchlist: ${futureSnap.error}',
+                          ),
+                        );
+                      }
+
+                      final listings = futureSnap.data ?? [];
+                      if (listings.isEmpty) {
+                        return const Center(
+                          child: Text('No watchlist listings found'),
+                        );
+                      }
+
+                      return Column(
+                        children: listings
+                            .map(
+                              (listing) => WatchListTemplate(
+                                listingName:
+                                    listing['title'] as String? ?? 'Untitled',
+                              ),
+                            )
+                            .toList(),
+                      );
+                    },
                   );
-                }
-
-                final watchListData = userData['watchList'];
-
-                for (var doc in watchListData) {}
-                return Center();
-              },
-            ),
-            SizedBox(height: 50),
+                },
+              ),
+            const SizedBox(height: 50),
           ],
         ),
       ),
     );
   }
-}
 
-class DropdownContainer extends StatelessWidget {
-  final String containerText;
-  const DropdownContainer({super.key, required this.containerText});
+  // Fetches listing documents for a list of IDs.
+  // Uses whereIn batched in groups of 10 (Firestore limit).
+  Future<List<Map<String, dynamic>>> _fetchWatchListings(
+    List<String> ids,
+  ) async {
+    final results = <Map<String, dynamic>>[];
 
-  @override
-  Widget build(BuildContext context) {
+    // Firestore whereIn supports max 10 items per query.
+    for (int i = 0; i < ids.length; i += 10) {
+      final batch = ids.sublist(i, i + 10 > ids.length ? ids.length : i + 10);
+      final snap = await _firestore
+          .collection('listings')
+          .where(FieldPath.documentId, whereIn: batch)
+          .get();
+      for (final doc in snap.docs) {
+        results.add({...doc.data(), 'id': doc.id});
+      }
+    }
+
+    return results;
+  }
+
+  // Reusable button builder to eliminate repetitive Padding/Material/MaterialButton trees.
+  Widget _buildButton(String label, VoidCallback onPressed) {
     return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Container(
-        color: Colors.grey[200],
-        child: Text(containerText, style: TextStyle(fontSize: 15)),
+      padding: const EdgeInsets.all(10),
+      child: Material(
+        elevation: 5.0,
+        color: Colors.grey,
+        borderRadius: BorderRadius.circular(30.0),
+        child: MaterialButton(
+          onPressed: onPressed,
+          minWidth: double.infinity,
+          height: 42.0,
+          child: Text(label),
+        ),
       ),
     );
   }
@@ -428,6 +379,15 @@ class WatchListTemplate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[300],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(listingName, style: const TextStyle(fontSize: 18)),
+    );
   }
 }
