@@ -3,11 +3,7 @@ import 'package:chat_job/screens/registration_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:modal_progress_hud_nsn/modal_progress_hud_nsn.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-final _auth = FirebaseAuth.instance;
-final _firestore = FirebaseFirestore.instance;
+import 'package:cloud_functions/cloud_functions.dart';
 
 class RegistrationPaymentScreen extends StatefulWidget {
   static const id = 'registrationPaymentScreen';
@@ -360,20 +356,22 @@ class _RegistrationPaymentScreenState extends State<RegistrationPaymentScreen> {
     }
   }
 
-  // This should call your backend (Firebase Cloud Function)
   Future<Map<String, dynamic>> _createPaymentIntent({
     required int amount,
     required String currency,
   }) async {
     try {
-      // IMPORTANT: Implement this as a Firebase Cloud Function
-      // This is a placeholder - you need to create the backend function
-      throw Exception(
-        'Backend integration required. '
-        'Implement createPaymentIntent Cloud Function.',
-      );
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('createPaymentIntent')
+          .call({
+            'amount': amount,
+            'currency': currency,
+            'type': 'add_money', // or 'registration_fee'
+          });
+
+      return Map<String, dynamic>.from(result.data);
     } catch (e) {
-      rethrow;
+      throw Exception('Failed to create payment intent: $e');
     }
   }
 }

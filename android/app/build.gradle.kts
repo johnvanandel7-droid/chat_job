@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "co.andelwood2.chat_job"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 33
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

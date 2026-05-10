@@ -1,5 +1,6 @@
 import 'package:chat_job/constants.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
@@ -373,27 +374,22 @@ class _AddMoneyScreenState extends State<AddMoneyScreen> {
     }
   }
 
-  // This should be called from your backend (Firebase Cloud Function)
-  // For now, this is a placeholder - implement with your actual backend
   Future<Map<String, dynamic>> _createPaymentIntent({
     required int amount,
     required String currency,
   }) async {
     try {
-      // IMPORTANT: Call your backend API to create payment intent
-      // Example using Firebase Cloud Function:
-      // final response = await FirebaseFunctions.instance
-      //     .httpsCallable('createPaymentIntent')
-      //     .call({'amount': amount, 'currency': currency});
-      // return response.data;
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('createPaymentIntent')
+          .call({
+            'amount': amount,
+            'currency': currency,
+            'type': 'add_money', // or 'registration_fee'
+          });
 
-      // TEMPORARY: This is a mock - replace with actual backend call
-      throw Exception(
-        'Backend integration required. '
-        'Implement createPaymentIntent Cloud Function.',
-      );
+      return Map<String, dynamic>.from(result.data);
     } catch (e) {
-      rethrow;
+      throw Exception('Failed to create payment intent: $e');
     }
   }
 }
