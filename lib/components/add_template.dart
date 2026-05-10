@@ -449,6 +449,182 @@ class _AddTemplateScreenState extends State<AddTemplateScreen> {
     }
   }
 
+  Future<void> _showReportSheet(BuildContext context) async {
+    String? selectedReason;
+    final detailsController = TextEditingController();
+
+    final reasons = {
+      'scam': 'Scam or fraud',
+      'inappropriate': 'Inappropriate content',
+      'wrong_category': 'Wrong category',
+      'already_sold': 'Already sold / unavailable',
+      'other': 'Other',
+    };
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SingleChildScrollView(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  20,
+                  20,
+                  MediaQuery.of(context).viewInsets.bottom + 20,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Report listing',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Why are you reporting this listing?',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Reason chips
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: reasons.entries.map((e) {
+                        return ChoiceChip(
+                          label: Text(e.value),
+                          selected: selectedReason == e.key,
+                          onSelected: (_) =>
+                              setSheetState(() => selectedReason = e.key),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Optional details
+                    TextField(
+                      controller: detailsController,
+                      maxLines: 3,
+                      maxLength: 300,
+                      decoration: const InputDecoration(
+                        hintText: 'Add details (optional)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: selectedReason == null
+                            ? null
+                            : () async {
+                                Navigator.pop(sheetContext);
+                                await _submitReport(
+                                  reason: selectedReason!,
+                                  details: detailsController.text.trim(),
+                                );
+                              },
+                        child: const Text('Submit report'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    detailsController.dispose();
+  }
+
+  Future<void> _submitReport({
+    required String reason,
+    required String details,
+  }) async {
+    final user = auth.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You must be logged in to report')),
+      );
+      return;
+    }
+
+    if (user.uid == widget.sellerId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You cannot report your own listing')),
+      );
+      return;
+    }
+
+    try {
+      // Duplicate check in its own try/catch so it can't block the submit
+      bool alreadyReported = false;
+      try {
+        final existing = await firestore
+            .collection('reports')
+            .where('listingId', isEqualTo: widget.listingId)
+            .where('reporterId', isEqualTo: user.uid)
+            .limit(1)
+            .get();
+        alreadyReported = existing.docs.isNotEmpty;
+      } catch (_) {
+        // Collection doesn't exist yet — that's fine, just proceed
+      }
+
+      if (alreadyReported) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('You have already reported this listing'),
+            ),
+          );
+        }
+        return;
+      }
+
+      await firestore.collection('reports').add({
+        'listingId': widget.listingId,
+        'reporterId': user.uid,
+        'reporterEmail': user.email,
+        'sellerId': widget.sellerId,
+        'sellerEmail': widget.sellerEmail,
+        'listingTitle': widget.addName,
+        'reason': reason,
+        'details': details.isEmpty ? null : details,
+        'createdAt': FieldValue.serverTimestamp(),
+        'status': 'pending',
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Report submitted — we\'ll review it shortly'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to submit report: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // safe seller name
@@ -501,14 +677,32 @@ class _AddTemplateScreenState extends State<AddTemplateScreen> {
                 children: [
                   MaterialButton(
                     onPressed: () async {
-                      await firestore.collection('users').doc(currentUserUid).update({
-                        'watchList': FieldValue.arrayUnion([widget.listingId]),
-                      });
+                      await firestore
+                          .collection('users')
+                          .doc(currentUserUid)
+                          .update({
+                            'watchList': FieldValue.arrayUnion([
+                              widget.listingId,
+                            ]),
+                          });
                     },
                     child: Row(
                       children: [
                         Text('Save Listing'),
+                        SizedBox(width: 5),
                         Icon(Icons.save, size: 30),
+                      ],
+                    ),
+                  ),
+                  MaterialButton(
+                    onPressed: () {
+                      _showReportSheet(context);
+                    },
+                    child: Row(
+                      children: [
+                        Text('Report Listing'),
+                        SizedBox(width: 5),
+                        Icon(Icons.flag_outlined, size: 30),
                       ],
                     ),
                   ),

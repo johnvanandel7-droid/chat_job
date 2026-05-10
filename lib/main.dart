@@ -17,15 +17,19 @@ import 'package:chat_job/screens/view_my_ratings.dart';
 import 'package:chat_job/screens/welcome_screen.dart';
 import 'package:chat_job/screens/login_screen.dart';
 import 'package:chat_job/screens/registration_screen.dart';
+import 'package:chat_job/screens/chat_job_home.dart';
+
+// firestore imports
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
 import 'package:firebase_core/firebase_core.dart';
-import 'package:chat_job/screens/chat_job_home.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'firebase_options.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+
+// stripe money managing imports
+import 'package:flutter_stripe/flutter_stripe.dart';
 
 // local notifications plugin
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -39,6 +43,13 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
+  // Initialize Stripe with your publishable key
+  Stripe.publishableKey =
+      'pk_live_51TUHGCPR5ULPwwRdour035kiiyOPvdFdCjhj7fZJ2vsfFzFo9I0TEST3joIaQP3kE3FPqzUyagdjdYG1ePQKyM1000H6HbmKXg';
+
+  // Set up Stripe for web or mobile specific configuration
+  await Stripe.instance.applySettings();
+
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 

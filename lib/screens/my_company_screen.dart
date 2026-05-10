@@ -1,3 +1,4 @@
+import 'package:chat_job/components/add_template.dart';
 import 'package:chat_job/components/app_bar.dart';
 import 'package:chat_job/components/star_rating.dart';
 import 'package:chat_job/constants.dart';
@@ -42,6 +43,7 @@ class _MyCompanyState extends State<MyCompany> {
   double? cash;
   double? listingsSold;
   double? averageRating;
+  List<String> watchListIds = [];
 
   String dropDownValue = dropDownItems.first;
 
@@ -81,11 +83,16 @@ class _MyCompanyState extends State<MyCompany> {
       if (!doc.exists || !mounted) return;
 
       final data = doc.data()!;
+      final rawList = data['watchList'];
+
       setState(() {
         clicksOnListings = (data['clicksOnListing'] as num?)?.toInt() ?? 0;
         totalEarnings = (data['totalEarnings'] as num?)?.toDouble() ?? 0.0;
         cash = (data['totalCash'] as num?)?.toDouble() ?? 0.0;
         listingsSold = (data['listingsSold'] as num?)?.toDouble() ?? 0.0;
+        if (rawList is List) {
+          watchListIds = List<String>.from(rawList);
+        }
       });
     } catch (e) {
       if (mounted) {
@@ -258,99 +265,18 @@ class _MyCompanyState extends State<MyCompany> {
             const SizedBox(height: 20),
             const Text('Watch List', style: TextStyle(fontSize: 20)),
             const Padding(padding: EdgeInsets.all(10.0), child: Divider()),
-            // Watch List — resolved with FutureBuilder to fetch listing docs.
-            if (userUid != null)
-              StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: _firestore.collection('users').doc(userUid).snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  }
-                  if (!snapshot.hasData || !snapshot.data!.exists) {
-                    return const Center(child: Text('No listings yet'));
-                  }
-
-                  final userData = snapshot.data!.data();
-                  final rawList = userData?['watchList'];
-
-                  // Guard: watchList field missing or empty
-                  if (rawList == null || rawList is! List || rawList.isEmpty) {
-                    return const Center(
-                      child: Text('No listings on your watchlist yet'),
-                    );
-                  }
-
-                  final List<String> watchListIds = rawList
-                      .map((e) => e.toString())
-                      .toList();
-
-                  // FutureBuilder resolves the listing docs for the watch list IDs.
-                  return FutureBuilder<List<Map<String, dynamic>>>(
-                    future: _fetchWatchListings(watchListIds),
-                    builder: (context, futureSnap) {
-                      if (futureSnap.connectionState ==
-                          ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (futureSnap.hasError) {
-                        return Center(
-                          child: Text(
-                            'Error loading watchlist: ${futureSnap.error}',
-                          ),
-                        );
-                      }
-
-                      final listings = futureSnap.data ?? [];
-                      if (listings.isEmpty) {
-                        return const Center(
-                          child: Text('No watchlist listings found'),
-                        );
-                      }
-
-                      return Column(
-                        children: listings
-                            .map(
-                              (listing) => WatchListTemplate(
-                                listingName:
-                                    listing['title'] as String? ?? 'Untitled',
-                              ),
-                            )
-                            .toList(),
-                      );
-                    },
-                  );
-                },
-              ),
+            // Watch List
+            Column(
+              children: [
+                for (var data in watchListIds)
+                  WatchListTemplate(listingId: data),
+              ],
+            ),
             const SizedBox(height: 50),
           ],
         ),
       ),
     );
-  }
-
-  // Fetches listing documents for a list of IDs.
-  // Uses whereIn batched in groups of 10 (Firestore limit).
-  Future<List<Map<String, dynamic>>> _fetchWatchListings(
-    List<String> ids,
-  ) async {
-    final results = <Map<String, dynamic>>[];
-
-    // Firestore whereIn supports max 10 items per query.
-    for (int i = 0; i < ids.length; i += 10) {
-      final batch = ids.sublist(i, i + 10 > ids.length ? ids.length : i + 10);
-      final snap = await _firestore
-          .collection('listings')
-          .where(FieldPath.documentId, whereIn: batch)
-          .get();
-      for (final doc in snap.docs) {
-        results.add({...doc.data(), 'id': doc.id});
-      }
-    }
-
-    return results;
   }
 
   // Reusable button builder to eliminate repetitive Padding/Material/MaterialButton trees.
@@ -372,13 +298,78 @@ class _MyCompanyState extends State<MyCompany> {
   }
 }
 
-class WatchListTemplate extends StatelessWidget {
-  final String listingName;
+class WatchListTemplate extends StatefulWidget {
+  final String listingId;
+  const WatchListTemplate({super.key, required this.listingId});
 
-  const WatchListTemplate({super.key, required this.listingName});
+  @override
+  State<WatchListTemplate> createState() => _WatchListTemplateState();
+}
+
+class _WatchListTemplateState extends State<WatchListTemplate> {
+  // Holds every field needed for display + navigation.
+  // Null means "still loading".
+  Map<String, dynamic>? _listing;
+  bool _error = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchListing();
+  }
+
+  Future<void> _fetchListing() async {
+    try {
+      final doc = await _firestore
+          .collection('listings')
+          .doc(widget.listingId)
+          .get();
+
+      if (!mounted) return; // widget was disposed before the fetch finished
+
+      if (!doc.exists) {
+        setState(() => _error = true);
+        return;
+      }
+
+      setState(() => _listing = {...doc.data()!, 'id': doc.id});
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    // ── Loading state ──
+    if (_listing == null && !_error) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // ── Error / deleted listing ──
+    if (_error) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Text(
+          'Listing unavailable',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    //
+    final listing = _listing!;
+    final String listingName = listing['title'] as String? ?? 'Untitled';
+    final String sellerEmail = listing['sellerEmail'] as String? ?? '';
+    final String description = listing['description'] as String? ?? '';
+    final double price = (listing['price'] as num?)?.toDouble() ?? 0.0;
+    final int quantity = (listing['quantity'] as num?)?.toInt() ?? 0;
+    final List images = listing['images'] as List? ?? [];
+    final String sellerId = listing['sellerId'] as String? ?? '';
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -387,7 +378,34 @@ class WatchListTemplate extends StatelessWidget {
         color: Colors.grey[300],
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(listingName, style: const TextStyle(fontSize: 18)),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(listingName, style: const TextStyle(fontSize: 18)),
+          ),
+          MaterialButton(
+            color: Colors.white,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AddTemplateScreen(
+                    listingId: widget.listingId,
+                    sellerEmail: sellerEmail,
+                    addName: listingName,
+                    addDescription: description,
+                    addPrice: price,
+                    initialQuantity: quantity,
+                    images: images,
+                    sellerId: sellerId,
+                  ),
+                ),
+              );
+            },
+            child: const Text('View listing'),
+          ),
+        ],
+      ),
     );
   }
 }
