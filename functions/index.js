@@ -2,7 +2,10 @@ const { onDocumentUpdated, onDocumentCreated } = require("firebase-functions/v2/
 const { onCall } = require("firebase-functions/v2/https");
 const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
-const stripe = require("stripe")("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");
+
+require('dotenv').config();
+
+const stripe = process.env.STRIPE_KEY
 
 admin.initializeApp();
 const db = admin.firestore();
