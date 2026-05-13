@@ -2,6 +2,7 @@ import 'package:chat_job/components/add_template.dart';
 import 'package:chat_job/components/app_bar.dart';
 import 'package:chat_job/components/star_rating.dart';
 import 'package:chat_job/constants.dart';
+import 'package:chat_job/screens/add_money_screen.dart';
 import 'package:chat_job/screens/buy_sell_screen.dart';
 import 'package:chat_job/screens/create_listing.dart';
 import 'package:chat_job/screens/edit_company.dart';
@@ -217,17 +218,7 @@ class _MyCompanyState extends State<MyCompany> {
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: kContainerDecoration,
-                    child: Column(
-                      children: [
-                        Text('Cash: ${cash ?? '—'}'),
-                        const SizedBox(height: 10),
-                        MaterialButton(
-                          onPressed: () {},
-                          color: Colors.grey,
-                          child: const Text('Add money'),
-                        ),
-                      ],
-                    ),
+                    child: SizedBox(height: 20),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -252,6 +243,44 @@ class _MyCompanyState extends State<MyCompany> {
                 const SizedBox(width: 10),
               ],
             ),
+            SizedBox(height: 20),
+            const Text('Cash', style: TextStyle(fontSize: 30)),
+            Text('\$$cash', style: TextStyle(fontSize: 15)),
+            Row(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: MaterialButton(
+                    onPressed: () {
+                      Navigator.pushNamed(context, AddMoneyScreen.id);
+                    },
+                    color: Colors.green,
+                    child: Text('Add Money'),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: MaterialButton(
+                    onPressed: () {
+                      Navigator.pushNamed(context, AddMoneyScreen.id);
+                    },
+                    color: Colors.grey,
+                    child: Text('Withdraw Money'),
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: MaterialButton(
+                onPressed: () {
+                  Navigator.pushNamed(context, AddMoneyScreen.id);
+                },
+                color: Colors.grey,
+                child: Text('View transaction history'),
+              ),
+            ),
+            SizedBox(height: 10),
             const Text('Ratings', style: TextStyle(fontSize: 30)),
             const Padding(padding: EdgeInsets.all(10), child: Divider()),
             ReusableStarRating(rating: averageRating ?? 0, starSize: 30),
