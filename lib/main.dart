@@ -26,10 +26,13 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'firebase_options.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/material.dart';
 
 // stripe money managing imports
 import 'package:flutter_stripe/flutter_stripe.dart';
+
+// other imports
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 // local notifications plugin
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -43,15 +46,18 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
+  // Initialize binding first
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize firebase
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
   // Initialize Stripe with your publishable key
   Stripe.publishableKey =
       'pk_live_51TUHGCPR5ULPwwRdour035kiiyOPvdFdCjhj7fZJ2vsfFzFo9I0TEST3joIaQP3kE3FPqzUyagdjdYG1ePQKyM1000H6HbmKXg';
 
   // Set up Stripe for web or mobile specific configuration
   await Stripe.instance.applySettings();
-
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // retreive backround messages
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);

@@ -504,7 +504,7 @@ async function handleRefund(charge) {
 
 // Get transaction history for a user
 
-exports.getTransactionHistory = onCall(async (data, context) => {
+exports.getTransactionHistory = onCall(async (request) => {
     if (!request.auth) {
         throw new Error("User Must be authenticated")
     }
@@ -543,7 +543,7 @@ exports.getTransactionHistory = onCall(async (data, context) => {
 });
 
 // verify payment
-exports.verifyPayment = onCall(async (data, context) => {
+exports.verifyPayment = onCall(async (request) => {
     if (!request.auth) {
         throw new Error("User must be authenticated")
     }
