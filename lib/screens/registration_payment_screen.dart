@@ -2,8 +2,10 @@ import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:chat_job/screens/registration_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:geo_currencies/geo_currencies.dart';
 import 'package:modal_progress_hud_nsn/modal_progress_hud_nsn.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:geolocator/geolocator.dart';
 
 class RegistrationPaymentScreen extends StatefulWidget {
   static const id = 'registrationPaymentScreen';
@@ -17,9 +19,65 @@ class RegistrationPaymentScreen extends StatefulWidget {
 class _RegistrationPaymentScreenState extends State<RegistrationPaymentScreen> {
   bool isProcessing = false;
   String? errorMessage;
+  String? currentCurrency;
+  Position? position;
 
   // Registration fee - can be changed
-  static const double registrationFee = 4.99;
+  double registrationFee = 9.99;
+
+  // geo currencies customization
+  final GeoCurrencies geoCurrencies = GeoCurrencies(
+    config: GeoCurrenciesConfig(
+      geoCurrenciesType: GeoCurrenciesType.live,
+      decimalDigits: 2,
+      decimalSeparator: '.',
+      includeSymbol: true,
+      symbolSeparator: ' ',
+      locale: const Locale('En', 'en'),
+      thousandSeparator: ',',
+    ),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _initCurrency();
+  }
+
+  Future<void> _initCurrency() async {
+    await determinePosition();
+
+    if (position != null) {
+      final currencyData = await geoCurrencies.getCurrencyDataByCoordinate(
+        latitude: position!.latitude,
+        longitude: position!.longitude,
+      );
+      setState(() {
+        currentCurrency = currencyData?.symbol;
+      });
+    }
+  }
+
+  Future<void> determinePosition() async {
+    try {
+      // request for location first
+      LocationPermission permission = await Geolocator.requestPermission();
+
+      // check if location was allowed
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        position = null;
+        return;
+      }
+
+      // get location
+      position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+      );
+    } catch (e) {
+      position = null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +197,7 @@ class _RegistrationPaymentScreenState extends State<RegistrationPaymentScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'One-time payment • Added to your wallet',
+                        'One-time payment',
                         style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                         textAlign: TextAlign.center,
                       ),
@@ -374,4 +432,41 @@ class _RegistrationPaymentScreenState extends State<RegistrationPaymentScreen> {
       throw Exception('Failed to create payment intent: $e');
     }
   }
+}
+
+Future<Position?> determinePosition() async {
+  bool serviceEnabled;
+  LocationPermission permission;
+
+  // Check if location services are enabled
+  serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
+  if (!serviceEnabled) {
+    print('Location services are disabled.');
+    return null;
+  }
+
+  // Check permission
+  permission = await Geolocator.checkPermission();
+
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+
+    if (permission == LocationPermission.denied) {
+      print('Location permissions are denied');
+      return null;
+    }
+  }
+
+  if (permission == LocationPermission.deniedForever) {
+    print('Location permissions are permanently denied');
+    return null;
+  }
+
+  // Get current location
+  Position position = await Geolocator.getCurrentPosition(
+    locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
+  );
+
+  return position;
 }
