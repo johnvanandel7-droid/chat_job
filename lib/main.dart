@@ -1,7 +1,6 @@
 // screens
 import 'package:chat_job/screens/add_money_screen.dart';
 import 'package:chat_job/screens/buy_sell_screen.dart';
-import 'package:chat_job/screens/chat.dart';
 import 'package:chat_job/screens/chats_screen.dart';
 import 'package:chat_job/screens/create_chat_screen.dart';
 import 'package:chat_job/screens/create_listing.dart';
@@ -28,11 +27,12 @@ import 'firebase_options.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 // stripe money managing imports
-import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
 
 // other imports
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:io' as io show Platform;
 
 // local notifications plugin
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -52,82 +52,97 @@ Future<void> main() async {
   // Initialize firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Initialize Stripe with your publishable key
-  Stripe.publishableKey =
-      'pk_live_51TUHGCPR5ULPwwRdour035kiiyOPvdFdCjhj7fZJ2vsfFzFo9I0TEST3joIaQP3kE3FPqzUyagdjdYG1ePQKyM1000H6HbmKXg';
+  // === Mobile devices only
+  if (!kIsWeb && (io.Platform.isAndroid || io.Platform.isIOS)) {
+    // Initialize Stripe with your publishable key
+    stripe.Stripe.publishableKey =
+        'pk_live_51TUHGCPR5ULPwwRdour035kiiyOPvdFdCjhj7fZJ2vsfFzFo9I0TEST3joIaQP3kE3FPqzUyagdjdYG1ePQKyM1000H6HbmKXg';
 
-  // Set up Stripe for web or mobile specific configuration
-  await Stripe.instance.applySettings();
+    // Set up Stripe for mobile specific configuration
+    await stripe.Stripe.instance.applySettings();
 
-  // retreive backround messages
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    // retreive backround messages
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // request notification permission
-  await requestPermission();
+    // request notification permission
+    await requestPermission();
 
-  // init local notifications
-  const AndroidInitializationSettings androidSettings =
-      AndroidInitializationSettings('@mipmap/ic_launcher');
+    // init local notifications
+    const AndroidInitializationSettings androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
 
-  const InitializationSettings settings = InitializationSettings(
-    android: androidSettings,
-  );
+    const InitializationSettings settings = InitializationSettings(
+      android: androidSettings,
+    );
 
-  await flutterLocalNotificationsPlugin.initialize(settings: settings);
+    await flutterLocalNotificationsPlugin.initialize(settings: settings);
 
-  // Foreground message listener
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    if (message.notification != null) {
-      flutterLocalNotificationsPlugin.show(
-        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        title: message.notification!.title,
-        body: message.notification!.body,
-        notificationDetails: NotificationDetails(
-          android: AndroidNotificationDetails(
-            'chat_channel',
-            'Chat Messages',
-            importance: Importance.max,
-            priority: Priority.high,
+    // Foreground message listener
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (message.notification != null) {
+        flutterLocalNotificationsPlugin.show(
+          id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          title: message.notification!.title,
+          body: message.notification!.body,
+          notificationDetails: NotificationDetails(
+            android: AndroidNotificationDetails(
+              'chat_channel',
+              'Chat Messages',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
           ),
-        ),
-      );
-    }
-  });
+        );
+      }
+    });
 
-  // handle phone token refresh
-  FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
-    final user = FirebaseAuth.instance.currentUser;
+    // handle phone token refresh
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      final user = FirebaseAuth.instance.currentUser;
 
-    if (user != null) {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update(
-        {'phoneToken': newToken},
-      );
-    }
-  });
+      if (user != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({'phoneToken': newToken});
+      }
+    });
 
+    // go to correct screen on notification tap
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      final chatId = message.data['chatId'];
+
+      if (chatId != null && navigatorKey.currentContext != null) {
+        Navigator.pushNamed(
+          navigatorKey.currentContext!,
+          ChatsScreen.id,
+          arguments: chatId,
+        );
+      }
+    });
+  }
+
+  // all platforms
   // check if the users authentication is still the same
   FirebaseAuth.instance.authStateChanges().listen((user) async {
     if (user != null) {
-      String? token = await FirebaseMessaging.instance.getToken();
+      // for mobile update phone token
+      if (!kIsWeb && (io.Platform.isIOS || io.Platform.isAndroid)) {
+        String? token = await FirebaseMessaging.instance.getToken();
 
-      if (token != null) {
+        if (token != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({'phoneToken': token}, SetOptions(merge: true));
+        }
+      }
+      // for desktop ensure that user record exists
+      else {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'phoneToken': token,
+          'lastLogin': DateTime.now(),
         }, SetOptions(merge: true));
       }
-    }
-  });
-
-  // go to chat when someone clicks on notification
-  FirebaseMessaging.onMessageOpenedApp.listen((message) {
-    final chatId = message.data['chatId'];
-
-    if (chatId != null) {
-      Navigator.pushNamed(
-        navigatorKey.currentContext!,
-        ChatScreen.id,
-        arguments: chatId,
-      );
     }
   });
 
@@ -148,6 +163,7 @@ Future<void> requestPermission() async {
 
 class ChatJob extends StatelessWidget {
   const ChatJob({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -166,6 +182,8 @@ class ChatJob extends StatelessWidget {
           onSurface: Colors.black,
         ),
         textTheme: TextTheme(bodyLarge: TextStyle(color: Colors.black54)),
+        // responsive text scaling
+        useMaterial3: true,
       ),
       initialRoute: WelcomeScreen.id,
       routes: {

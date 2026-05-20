@@ -28,14 +28,17 @@ class DefaultFirebaseOptions {
     }
   }
 
+  // android configuration
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyDveiwj014YnwT5R5vwLvcMDkE3mDfzdhE',
     appId: '1:230123407289:android:231fa1cad9aa55961b5868',
     messagingSenderId: '230123407289',
     projectId: 'chat-job-2',
     storageBucket: 'chat-job-2.firebasestorage.app',
+    iosBundleId: 'co.andelwood2.chat_job',
   );
 
+  // ios configuration
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDveiwj014YnwT5R5vwLvcMDkE3mDfzdhE',
     appId: '1:230123407289:ios:231fa1cad9aa55961b5868',
@@ -45,6 +48,7 @@ class DefaultFirebaseOptions {
     iosBundleId: 'co.andelwood2.chat_job',
   );
 
+  // web configuration
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyDveiwj014YnwT5R5vwLvcMDkE3mDfzdhE',
     appId: '1:230123407289:web:231fa1cad9aa55961b5868',

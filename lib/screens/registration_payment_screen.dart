@@ -188,7 +188,7 @@ class _RegistrationPaymentScreenState extends State<RegistrationPaymentScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '\$${registrationFee.toStringAsFixed(2)}',
+                        '${registrationFee.toStringAsFixed(2)} $currentCurrency',
                         style: const TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.bold,
